@@ -39,8 +39,16 @@ a partir da aba **TICKETS** da planilha BD - CTE. Mesmo padrão visual dos demai
 Filtros: **data início/fim, transportadora, cliente, rota**.
 Cards: custo médio R$/t · total pago · volume (t) · ticket médio/frete · top transportadora
 (por volume) · rota mais cara (R$/t).
-Gráficos: evolução do R$/t por mês · volume por transportadora · R$/t por transportadora ·
-volume por cliente. Tabela: histórico de R$/t por rota (médio/mín/máx), ordenável.
+Gráficos: **volume diário** (toneladas + R$/t) · volume por transportadora ·
+**custo médio R$/t por cliente** · volume por cliente.
+
+**Histórico por rota**: mini-gráfico do R$/t médio **por semana** em cada rota, com volume,
+R$/t médio, mínimo e máximo. Verde = preço caiu na rota; laranja = subiu.
+
+**Savings (economia)**: card + insights + gráfico por rota. Para cada rota, o baseline é o
+**maior preço médio semanal** já praticado (ignorando semanas atípicas, acima de 2,5× a
+mediana da rota); a economia é a diferença entre esse baseline e o que foi efetivamente pago,
+multiplicada pelo volume. É uma medida de *custo evitado* vs. o pico de preço da rota.
 
 ## Trocar de planilha/aba
 Edite no topo de `build_data.py`: `SHEET_ID`, `SHEET_TAB`.

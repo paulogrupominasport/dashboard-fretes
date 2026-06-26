@@ -39,11 +39,15 @@ a partir da aba **TICKETS** da planilha BD - CTE. Mesmo padrão visual dos demai
 Filtros: **data início/fim, transportadora, cliente, rota**.
 Cards: custo médio R$/t · total pago · volume (t) · ticket médio/frete · top transportadora
 (por volume) · rota mais cara (R$/t).
-Gráficos: **volume diário** (toneladas + R$/t) · volume por transportadora ·
-**custo médio R$/t por cliente** · volume por cliente.
+Gráficos (respondem aos filtros): **volume diário** (toneladas + R$/t) · volume por
+transportadora · custo médio R$/t por cliente · volume por cliente ·
+**valor gasto por transportadora (R$)** · **valor gasto com frete por cliente (R$)**.
+
+Campos de data com **calendário** (flatpickr, embutido, em português).
 
 **Histórico por rota**: mini-gráfico do R$/t médio **por semana** em cada rota, com volume,
 R$/t médio, mínimo e máximo. Verde = preço caiu na rota; laranja = subiu.
+Esta tabela usa a **base completa e não é afetada pelos filtros** (tem busca própria de rota).
 
 **Savings (economia)**: card + insights + gráfico por rota. Para cada rota, o baseline é o
 **maior preço médio semanal** já praticado (ignorando semanas atípicas, acima de 2,5× a

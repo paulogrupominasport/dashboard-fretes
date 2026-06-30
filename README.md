@@ -54,6 +54,17 @@ Esta tabela usa a **base completa e não é afetada pelos filtros** (tem busca p
 mediana da rota); a economia é a diferença entre esse baseline e o que foi efetivamente pago,
 multiplicada pelo volume. É uma medida de *custo evitado* vs. o pico de preço da rota.
 
+## Abas
+**1) Histórico de Fretes** — tudo descrito acima (filtros, cards, gráficos, savings, histórico por rota).
+
+**2) Fretes Concorrentes** — lê a aba **FRETES CONCORRENTES** e mostra os fretes de
+concorrentes que saem das **mesmas origens em que você carrega**. Cada origem ganha um selo
+"você carrega" quando bate com um local seu. Traz cards (nº de fretes, origens em comum,
+transportadoras, faixa de valor), um gráfico **concorrente × você** (seu R$/t médio na mesma
+rota, ou na mesma origem quando você não roda aquele destino) e a tabela completa, com opção
+de mostrar só as origens que você carrega. A coluna Δ usa o valor da transportadora quando
+houver, senão o do motorista.
+
 ## Trocar de planilha/aba
 Edite no topo de `build_data.py`: `SHEET_ID`, `SHEET_TAB`.
 

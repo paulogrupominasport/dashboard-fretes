@@ -26,6 +26,7 @@ from datetime import datetime, timezone, timedelta
 # ----------------------------------------------------------------------------
 SHEET_ID = "1pzjzRHDw1cHNQ4U287mMFIr9iOiyVH5MvvSPGW0yLDE"
 SHEET_TAB = "Tickets"
+SHEET_TAB_COMP = "FRETES CONCORRENTES"
 OUTPUT = "dados_ctes.json"
 
 GVIZ_CSV = (
@@ -42,6 +43,19 @@ COL_DTEMIS  = "Data Emiss. CTe"       # coluna M
 COL_LOTE    = "Lote"                  # coluna S -> cliente
 COL_COLETA  = "Cidade Coleta"         # coluna AC
 COL_ENTREGA = "Cidade Entrega"        # coluna AD
+
+# Aba FRETES CONCORRENTES
+CC_REGIAO   = "REGIÃO"
+CC_LOCAL    = "LOCAL DE CARREGAMENTO"
+CC_CIDADEC  = "CIDADE DE CARREGAMENTO"
+CC_EMPRESA  = "EMPRESA DE DESCARGA"
+CC_CIDADED  = "CIDADE DE DESCARGA"
+CC_TRANSP   = "TRANSPORTADORA"
+CC_VMOT     = "VALOR MOTORISTA"
+CC_VTRANSP  = "VALOR TRANSPORTADORA"
+CC_PEDAGIO  = "PEDÁGIO"
+CC_EIXOS    = "EIXOS"
+CC_RESTRIC  = "RESTRIÇÃO"
 
 TZ_BR = timezone(timedelta(hours=-3))  # America/Sao_Paulo (sem horário de verão)
 
@@ -159,8 +173,8 @@ def to_date(v):
 # ----------------------------------------------------------------------------
 # Leitura da planilha
 # ----------------------------------------------------------------------------
-def fetch_rows():
-    url = GVIZ_CSV.format(id=SHEET_ID, tab=urllib.parse.quote(SHEET_TAB))
+def fetch_rows(tab=SHEET_TAB):
+    url = GVIZ_CSV.format(id=SHEET_ID, tab=urllib.parse.quote(tab))
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
     with urllib.request.urlopen(req, timeout=60) as r:
         raw = r.read().decode("utf-8", errors="replace")
@@ -171,7 +185,7 @@ def fetch_rows():
 # ----------------------------------------------------------------------------
 # Construção dos registros (com merge "duas pernas")
 # ----------------------------------------------------------------------------
-def build(rows):
+def build(rows, comp_rows=None):
     groups = defaultdict(list)
     valid = 0
     for r in rows:
@@ -227,6 +241,7 @@ def build(rows):
         if fr["ckey"] in canonical:
             fr["carrier"] = canonical[fr["ckey"]]
 
+    competitors = build_competitors(comp_rows or [])
     meta = {
         "generated_at": datetime.now(TZ_BR).strftime("%d/%m/%Y %H:%M"),
         "generated_iso": datetime.now(TZ_BR).isoformat(),
@@ -235,8 +250,9 @@ def build(rows):
         "rows_valid": valid,
         "freights": len(freights),
         "two_leg_merged": two_leg,
+        "competitors": len(competitors),
     }
-    return {"meta": meta, "freights": freights}
+    return {"meta": meta, "freights": freights, "competitors": competitors}
 
 
 def _rec(ag, twoleg, carrier, ckey, client, origem, destino, peso, valor, data):
@@ -260,17 +276,49 @@ def _rec(ag, twoleg, carrier, ckey, client, origem, destino, peso, valor, data):
     }
 
 
+def build_competitors(rows):
+    out = []
+    for r in rows:
+        cidc = r.get(CC_CIDADEC)
+        if not cidc and not r.get(CC_LOCAL):
+            continue
+        origem = _title(clean_city(cidc))
+        destino = _title(clean_city(r.get(CC_CIDADED)))
+        transp_disp, transp_key = clean_carrier(r.get(CC_TRANSP)) if r.get(CC_TRANSP) else ("", "")
+        out.append({
+            "regiao": (str(r.get(CC_REGIAO) or "").strip().title() or "—"),
+            "local": _title(str(r.get(CC_LOCAL) or "").strip()),
+            "origem": origem,
+            "empresa": (str(r.get(CC_EMPRESA) or "").strip().upper() or "—"),
+            "destino": destino,
+            "rota": f"{origem} → {destino}" if origem and destino else (origem or destino or "—"),
+            "transp": transp_disp or "—",
+            "v_mot": to_float(r.get(CC_VMOT)) or None,
+            "v_transp": to_float(r.get(CC_VTRANSP)) or None,
+            "pedagio": (str(r.get(CC_PEDAGIO) or "").strip() or "—"),
+            "eixos": (str(r.get(CC_EIXOS) or "").strip() or "—"),
+            "restricao": (str(r.get(CC_RESTRIC) or "").strip() or "—"),
+        })
+    return out
+
+
 def main():
     try:
-        rows = fetch_rows()
+        rows = fetch_rows(SHEET_TAB)
     except Exception as e:  # noqa
         print(f"ERRO ao ler a planilha: {e}", file=sys.stderr)
         sys.exit(1)
-    payload = build(rows)
+    try:
+        comp_rows = fetch_rows(SHEET_TAB_COMP)
+    except Exception as e:  # noqa
+        print(f"AVISO: não foi possível ler '{SHEET_TAB_COMP}': {e}", file=sys.stderr)
+        comp_rows = []
+    payload = build(rows, comp_rows)
     with open(OUTPUT, "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, separators=(",", ":"))
     m = payload["meta"]
-    print(f"OK -> {OUTPUT} | fretes={m['freights']} | duas-pernas={m['two_leg_merged']} | {m['generated_at']}")
+    print(f"OK -> {OUTPUT} | fretes={m['freights']} | duas-pernas={m['two_leg_merged']} "
+          f"| concorrentes={m['competitors']} | {m['generated_at']}")
 
 
 if __name__ == "__main__":

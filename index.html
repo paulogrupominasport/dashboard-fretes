@@ -170,6 +170,23 @@ header img{height:54px;border-radius:8px;background:#000;padding:6px 10px}
 .spark-cell svg{display:block}
 .spark-empty{color:var(--muted2);font-size:11px}
 
+/* Abas */
+.tabs{display:flex;gap:4px;margin-bottom:18px;border-bottom:1px solid var(--line)}
+.tab{background:none;border:none;color:var(--muted);font-size:14px;font-weight:600;padding:11px 18px;
+  cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;transition:.15s;display:flex;align-items:center;gap:8px}
+.tab:hover{color:var(--text)}
+.tab.active{color:var(--lime2);border-bottom-color:var(--lime)}
+.tab .cnt{font-size:11px;background:var(--card2);border:1px solid var(--line);border-radius:20px;padding:1px 8px;color:var(--muted)}
+.tab.active .cnt{color:var(--lime2);border-color:rgba(183,214,50,.4)}
+.tabpane[hidden]{display:none}
+.badge-origem{display:inline-block;margin-left:7px;font-size:9.5px;color:var(--lime2);border:1px solid rgba(183,214,50,.4);
+  border-radius:5px;padding:1px 6px;vertical-align:middle;letter-spacing:.2px}
+.chk{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);cursor:pointer;user-select:none}
+.chk input{accent-color:var(--lime);width:15px;height:15px}
+.delta-pos{color:var(--save);font-weight:600}
+.delta-neg{color:var(--warn);font-weight:600}
+.cc-note{font-size:11.5px;color:var(--muted2);margin-top:4px}
+
 .loading{display:flex;align-items:center;justify-content:center;height:60vh;flex-direction:column;gap:14px;color:var(--muted)}
 .loading .ring{width:34px;height:34px;border:3px solid var(--line2);border-top-color:var(--lime);border-radius:50%;animation:sp 1s linear infinite}
 .err{background:rgba(233,80,80,.08);border:1px solid rgba(233,80,80,.4);color:#f0a0a0;padding:14px 18px;border-radius:12px;font-size:13px}
@@ -201,6 +218,13 @@ footer{margin-top:26px;font-size:11px;color:var(--muted2);text-align:center;line
 <div class="rule"></div>
 
 <div id="app" style="display:none">
+
+  <div class="tabs">
+    <button class="tab active" data-tab="historico">Histórico de Fretes</button>
+    <button class="tab" data-tab="concorrentes">Fretes Concorrentes <span class="cnt" id="cc-count">0</span></button>
+  </div>
+
+  <div id="tab-historico" class="tabpane">
 
   <div class="filters">
     <div class="field"><label>Data início</label><input type="date" id="f-ini"></div>
@@ -299,8 +323,52 @@ footer{margin-top:26px;font-size:11px;color:var(--muted2);text-align:center;line
     </div>
   </div>
 
+  </div><!-- /tab-historico -->
+
+  <div id="tab-concorrentes" class="tabpane" hidden>
+    <div style="margin-bottom:18px">
+      <h2 style="font-size:17px;margin:0 0 3px"><span class="dot"></span> Fretes concorrentes saindo dos mesmos locais que você carrega</h2>
+      <p class="ph-sub" style="margin:0">Fretes de concorrentes (aba <b>FRETES CONCORRENTES</b>) comparados aos seus, nas origens em comum. Atualiza junto com o restante.</p>
+    </div>
+
+    <div class="kpis" id="cc-kpis"></div>
+
+    <div class="panel">
+      <h2><span class="dot"></span>Comparativo de valor — concorrente vs. você</h2>
+      <p class="ph-sub">Barra <b>Você</b> = seu R$/t médio na mesma rota (ou na mesma origem, quando você não roda o destino do concorrente). Considera só origens em comum.</p>
+      <div class="chart-wrap"><canvas id="ch-comp"></canvas></div>
+    </div>
+
+    <div class="panel">
+      <div class="table-tools">
+        <div>
+          <h2 style="margin:0"><span class="dot"></span>Fretes concorrentes</h2>
+          <p class="ph-sub" style="margin-top:3px">Origem destacada quando é um local de onde você também carrega</p>
+        </div>
+        <label class="chk"><input type="checkbox" id="cc-onlymine"> mostrar só origens que carrego</label>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="tbl" id="cc-tbl">
+          <thead><tr>
+            <th>Origem</th>
+            <th>Destino</th>
+            <th>Empresa descarga</th>
+            <th>Transportadora</th>
+            <th>Val. motorista</th>
+            <th>Val. transportadora</th>
+            <th>Seu R$/t méd.</th>
+            <th>Δ conc. − você</th>
+            <th>Restrição</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="cc-note">Valores conforme cadastrados na planilha. Δ usa o valor da transportadora quando disponível, senão o valor do motorista. * = comparação pela origem (você não roda esse destino).</p>
+    </div>
+  </div><!-- /tab-concorrentes -->
+
   <footer>
-    Grupo Minas Port · dados da planilha <b>BD - CTE</b> (aba TICKETS) ·
+    Grupo Minas Port · dados da planilha <b>BD - CTE</b> ·
     <span id="meta-foot"></span>
   </footer>
 </div>
@@ -426,7 +494,7 @@ function sparkline(points, w=140, h=30){
   </svg>`;
 }
 
-let DATA=null, FREIGHTS=[], charts={}, sortKey="rpt", sortDir=-1, tableRows=[];
+let DATA=null, FREIGHTS=[], COMP=[], charts={}, sortKey="rpt", sortDir=-1, tableRows=[];
 
 Chart.defaults.color = MUTED;
 Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
@@ -439,11 +507,14 @@ async function load(){
     if(!res.ok) throw new Error("HTTP "+res.status+" ao buscar dados_ctes.json");
     DATA = await res.json();
     FREIGHTS = DATA.freights||[];
+    COMP = DATA.competitors||[];
     document.getElementById("updated").textContent = DATA.meta?.generated_at || "—";
     document.getElementById("meta-foot").textContent =
-      `${fmtN(DATA.meta?.freights)} fretes · ${fmtN(DATA.meta?.two_leg_merged)} consolidados (duas pernas) · gerado ${DATA.meta?.generated_at}`;
+      `${fmtN(DATA.meta?.freights)} fretes · ${fmtN(DATA.meta?.two_leg_merged)} consolidados (duas pernas) · ${fmtN(COMP.length)} fretes concorrentes · gerado ${DATA.meta?.generated_at}`;
+    document.getElementById("cc-count").textContent = fmtN(COMP.length);
     initFilters();
     apply();
+    renderCompetitors();
     document.getElementById("loading").style.display="none";
     document.getElementById("error").style.display="none";
     document.getElementById("app").style.display="block";
@@ -777,10 +848,113 @@ function renderSavings(rows){
       scales:{x:{grid:{color:GRID},ticks:{callback:v=>"R$ "+fmtN(v)}},y:{grid:{display:false},ticks:{font:{size:10}}}}})});
 }
 
+/* ---- Aba: Fretes Concorrentes ---- */
+function userRefs(){
+  // R$/t médio por origem e por rota (base completa de fretes)
+  const byOri={}, byRota={};
+  FREIGHTS.forEach(f=>{ if(f.rpt==null) return;
+    if(f.origem){ const a=byOri[f.origem]||(byOri[f.origem]={v:0,p:0}); a.v+=f.valor; a.p+=f.peso; }
+    if(f.rota){ const b=byRota[f.rota]||(byRota[f.rota]={v:0,p:0}); b.v+=f.valor; b.p+=f.peso; }
+  });
+  const oriAvg={}, rotaAvg={};
+  for(const k in byOri) oriAvg[k]= byOri[k].p>0? byOri[k].v/byOri[k].p : null;
+  for(const k in byRota) rotaAvg[k]= byRota[k].p>0? byRota[k].v/byRota[k].p : null;
+  return {oriAvg, rotaAvg};
+}
+function enrichComp(){
+  const {oriAvg, rotaAvg}=userRefs();
+  return COMP.map(c=>{
+    const sameOrigin = oriAvg[c.origem]!=null;
+    const compVal = (c.v_transp!=null)? c.v_transp : c.v_mot;       // valor comparável
+    const compSrc = (c.v_transp!=null)? "transp" : "mot";
+    let ref=null, refKind=null;
+    if(rotaAvg[c.rota]!=null){ ref=rotaAvg[c.rota]; refKind="rota"; }
+    else if(oriAvg[c.origem]!=null){ ref=oriAvg[c.origem]; refKind="origem"; }
+    const delta = (compVal!=null && ref!=null)? compVal-ref : null;
+    return {...c, sameOrigin, compVal, compSrc, ref, refKind, delta};
+  });
+}
+function renderCompetitors(){
+  if(!COMP.length){
+    document.getElementById("cc-kpis").innerHTML =
+      `<div class="kpi" style="grid-column:1/-1"><div class="lab">Sem dados</div>
+       <div class="val" style="font-size:16px">Nenhum frete concorrente cadastrado</div>
+       <div class="sub">Preencha a aba "FRETES CONCORRENTES" na planilha.</div></div>`;
+    document.querySelector("#cc-tbl tbody").innerHTML="";
+    destroy("comp"); return;
+  }
+  const rows=enrichComp();
+  const sameOriRows=rows.filter(r=>r.sameOrigin);
+  const origensComuns=new Set(sameOriRows.map(r=>r.origem)).size;
+  const transps=new Set(rows.map(r=>r.transp).filter(x=>x&&x!=="—")).size;
+  const vals=rows.map(r=>r.compVal).filter(v=>v!=null);
+  const faixa = vals.length? `R$ ${Math.min(...vals).toLocaleString("pt-BR")} – ${Math.max(...vals).toLocaleString("pt-BR")}` : "—";
+
+  document.getElementById("cc-kpis").innerHTML=[
+    {lab:"Fretes concorrentes",val:fmtN(rows.length),sub:"cadastrados na planilha"},
+    {lab:"Origens em comum",val:fmtN(origensComuns),sub:"locais que você também carrega"},
+    {lab:"Transportadoras",val:fmtN(transps),sub:"concorrentes mapeadas"},
+    {lab:"Faixa de valor",val:`<span style="font-size:17px">${faixa}</span>`,sub:"por tonelada (valor informado)"}
+  ].map(c=>`<div class="kpi"><div class="lab">${c.lab}</div><div class="val">${c.val}</div><div class="sub">${c.sub}</div></div>`).join("");
+
+  // chart: concorrente vs você (só origens em comum, com ref)
+  const cmp=sameOriRows.filter(r=>r.compVal!=null && r.ref!=null);
+  destroy("comp");
+  if(cmp.length){
+    charts.comp=new Chart(document.getElementById("ch-comp"),{type:"bar",
+      data:{labels:cmp.map(r=>r.rota+(r.refKind==="origem"?" *":"")),
+        datasets:[
+          {label:"Concorrente",data:cmp.map(r=>r.compVal),backgroundColor:"rgba(233,162,59,.85)",borderRadius:5,maxBarThickness:26},
+          {label:"Você (R$/t médio)",data:cmp.map(r=>r.ref),backgroundColor:"rgba(183,214,50,.85)",borderRadius:5,maxBarThickness:26}
+        ]},
+      options:baseOpts({
+        plugins:{legend:{display:true,labels:{boxWidth:11,padding:12,font:{size:11},usePointStyle:true}},
+          tooltip:{callbacks:{label:c=>c.dataset.label+": "+fmtBRL(c.parsed.y)}}},
+        scales:{x:{grid:{display:false},ticks:{font:{size:10}}},y:{grid:{color:GRID},ticks:{callback:v=>"R$ "+v}}}})});
+  } else {
+    const ctx=document.getElementById("ch-comp").getContext("2d");
+    ctx.clearRect(0,0,ctx.canvas.width,ctx.canvas.height);
+  }
+  renderCompTable(rows);
+}
+function renderCompTable(rows){
+  const only=document.getElementById("cc-onlymine").checked;
+  let r=only? rows.filter(x=>x.sameOrigin):rows;
+  const tb=document.querySelector("#cc-tbl tbody");
+  const cell=v=> v==null? '<span class="muted">—</span>' : fmtBRL(v);
+  tb.innerHTML = r.map(x=>{
+    let d="—";
+    if(x.delta!=null){ const cls=x.delta>=0?"delta-pos":"delta-neg";
+      d=`<span class="${cls}">${x.delta>=0?"+":""}${fmtBRL(x.delta)}</span>`; }
+    return `<tr>
+      <td class="rota">${x.origem}${x.sameOrigin?'<span class="badge-origem">você carrega</span>':''}</td>
+      <td style="text-align:left">${x.destino||"—"}</td>
+      <td style="text-align:left">${x.empresa||"—"}</td>
+      <td style="text-align:left">${x.transp||"—"}</td>
+      <td>${cell(x.v_mot)}</td>
+      <td>${cell(x.v_transp)}</td>
+      <td>${x.ref!=null? fmtBRL(x.ref)+(x.refKind==="origem"?' *':''):'<span class="muted">—</span>'}</td>
+      <td>${d}</td>
+      <td style="text-align:left">${x.restricao||"—"}</td>
+    </tr>`;}).join("") ||
+    `<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:24px">Nenhum frete concorrente ${only?"nas origens que você carrega":"cadastrado"}.</td></tr>`;
+}
+
+/* ---- abas ---- */
+document.querySelectorAll(".tab").forEach(t=>t.addEventListener("click",()=>{
+  document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("active",x===t));
+  const tab=t.dataset.tab;
+  document.getElementById("tab-historico").hidden = (tab!=="historico");
+  document.getElementById("tab-concorrentes").hidden = (tab!=="concorrentes");
+  // redraw charts da aba que ficou visível (Chart.js precisa de tamanho > 0)
+  Object.values(charts).forEach(c=>{ try{c.resize();}catch(e){} });
+}));
+
 /* ---- eventos ---- */
 ["f-carrier","f-client","f-rota"].forEach(id=>
   document.getElementById(id).addEventListener("change",apply));
 document.getElementById("tsearch").addEventListener("input",renderTable);
+document.getElementById("cc-onlymine").addEventListener("change",()=>renderCompTable(enrichComp()));
 document.querySelectorAll("#rota-tbl thead th").forEach(th=>th.addEventListener("click",()=>{
   const k=th.dataset.k; if(k==="spark") return;
   if(k===sortKey) sortDir*=-1; else {sortKey=k; sortDir=(k==="rota")?1:-1;}

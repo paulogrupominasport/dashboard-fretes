@@ -2,7 +2,7 @@ name: Atualizar dados CTEs
 
 on:
   schedule:
-    - cron: "*/10 * * * *"     # a cada 10 minutos (UTC)
+    - cron: "*/15 * * * *"     # a cada 10 minutos (UTC)
   workflow_dispatch:            # botão "Run workflow" / atualização sob demanda
   push:
     branches: [ main ]
@@ -23,7 +23,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 

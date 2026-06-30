@@ -2,7 +2,7 @@ name: Atualizar dados CTEs
 
 on:
   schedule:
-    - cron: "*/15 * * * *"     # a cada 10 minutos (UTC)
+    - cron: "*/7,37 * * * *"     # a cada 10 minutos (UTC)
   workflow_dispatch:            # botão "Run workflow" / atualização sob demanda
   push:
     branches: [ main ]

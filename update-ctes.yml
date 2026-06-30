@@ -1,0 +1,43 @@
+name: Atualizar dados CTEs
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"     # a cada 30 minutos (UTC)
+  workflow_dispatch:            # botão "Run workflow" / atualização sob demanda
+  push:
+    branches: [ main ]
+    paths:
+      - "build_data.py"
+      - ".github/workflows/update-ctes.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-ctes
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Gerar dados_ctes.json
+        run: python build_data.py
+
+      - name: Commitar se houver mudança
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if [ -n "$(git status --porcelain dados_ctes.json)" ]; then
+            git add dados_ctes.json
+            git commit -m "chore: atualiza dados CTEs ($(TZ=America/Sao_Paulo date '+%d/%m/%Y %H:%M'))"
+            git push
+          else
+            echo "Sem mudanças nos dados."
+          fi

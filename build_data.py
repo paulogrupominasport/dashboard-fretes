@@ -178,8 +178,16 @@ def fetch_rows(tab=SHEET_TAB):
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
     with urllib.request.urlopen(req, timeout=60) as r:
         raw = r.read().decode("utf-8", errors="replace")
+    low = raw.lstrip()[:200].lower()
+    if low.startswith("<!doctype") or low.startswith("<html") or "google.visualization" in low:
+        raise RuntimeError(
+            f"a aba '{tab}' não retornou CSV (a planilha pode não estar pública, "
+            f"ou o nome da aba está diferente de '{tab}' — confira maiúsc./minúsc.)")
     reader = csv.DictReader(io.StringIO(raw))
-    return list(reader)
+    rows = list(reader)
+    if not reader.fieldnames:
+        raise RuntimeError(f"a aba '{tab}' veio sem cabeçalho.")
+    return rows, reader.fieldnames
 
 
 # ----------------------------------------------------------------------------
@@ -304,16 +312,34 @@ def build_competitors(rows):
 
 def main():
     try:
-        rows = fetch_rows(SHEET_TAB)
+        rows, fields = fetch_rows(SHEET_TAB)
     except Exception as e:  # noqa
-        print(f"ERRO ao ler a planilha: {e}", file=sys.stderr)
+        print(f"ERRO ao ler a aba '{SHEET_TAB}': {e}", file=sys.stderr)
         sys.exit(1)
+
+    # valida que os cabeçalhos esperados existem (senão, não sobrescreve o JSON bom)
+    required = [COL_AGEND, COL_PESO, COL_VFINAL, COL_DTEMIS, COL_LOTE, COL_COLETA, COL_ENTREGA]
+    missing = [c for c in required if c not in fields]
+    if missing:
+        print("ERRO: a aba de tickets veio com cabeçalhos diferentes do esperado.", file=sys.stderr)
+        print("  Colunas que faltaram: " + ", ".join(repr(m) for m in missing), file=sys.stderr)
+        print("  Cabeçalhos lidos na planilha: " + ", ".join(repr(f) for f in fields), file=sys.stderr)
+        sys.exit(1)
+
     try:
-        comp_rows = fetch_rows(SHEET_TAB_COMP)
+        comp_rows, _ = fetch_rows(SHEET_TAB_COMP)
     except Exception as e:  # noqa
-        print(f"AVISO: não foi possível ler '{SHEET_TAB_COMP}': {e}", file=sys.stderr)
+        print(f"AVISO: não foi possível ler '{SHEET_TAB_COMP}' (seguindo sem concorrentes): {e}",
+              file=sys.stderr)
         comp_rows = []
+
     payload = build(rows, comp_rows)
+
+    if payload["meta"]["freights"] == 0:
+        print("ERRO: 0 fretes válidos após o processamento — JSON NÃO foi gravado "
+              "(para não apagar os dados bons). Confira a aba/planilha.", file=sys.stderr)
+        sys.exit(1)
+
     with open(OUTPUT, "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, separators=(",", ":"))
     m = payload["meta"]

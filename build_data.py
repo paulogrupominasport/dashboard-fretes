@@ -184,10 +184,14 @@ def fetch_rows(tab=SHEET_TAB):
             f"a aba '{tab}' não retornou CSV (a planilha pode não estar pública, "
             f"ou o nome da aba está diferente de '{tab}' — confira maiúsc./minúsc.)")
     reader = csv.DictReader(io.StringIO(raw))
-    rows = list(reader)
     if not reader.fieldnames:
         raise RuntimeError(f"a aba '{tab}' veio sem cabeçalho.")
-    return rows, reader.fieldnames
+    # normaliza cabeçalhos: remove espaços nas pontas (a planilha tem ex.: ' Valor Final Pagamento')
+    fields = [(f or "").strip() for f in reader.fieldnames]
+    rows = []
+    for raw_row in reader:
+        rows.append({(k or "").strip(): v for k, v in raw_row.items()})
+    return rows, fields
 
 
 # ----------------------------------------------------------------------------

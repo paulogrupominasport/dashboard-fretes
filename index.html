@@ -299,6 +299,33 @@ footer{margin-top:26px;font-size:11px;color:var(--muted2);text-align:center;line
   </div>
 
   <div class="panel">
+    <h2><span class="dot" style="background:var(--warn)"></span>Descontos nos CTEs</h2>
+    <p class="ph-sub">CTEs em que houve desconto no pagamento do frete (coluna <b>Valor Desconto</b>). Respeita os filtros acima.</p>
+    <div class="kpis" id="disc-kpis" style="margin:10px 0 18px"></div>
+    <div class="grid g2">
+      <div>
+        <p class="ph-sub" style="margin:0 0 8px">Desconto por cliente (R$) — top 10</p>
+        <div class="chart-wrap" style="height:300px"><canvas id="ch-disc"></canvas></div>
+      </div>
+      <div style="overflow-x:auto">
+        <p class="ph-sub" style="margin:0 0 8px">Por cliente (só CTEs com desconto)</p>
+        <table class="tbl" id="disc-tbl">
+          <thead><tr>
+            <th>Cliente</th>
+            <th>CTEs c/ desc.</th>
+            <th>Sem desconto</th>
+            <th>Desconto</th>
+            <th>Pago</th>
+            <th>% desc.</th>
+          </tr></thead>
+          <tbody></tbody>
+          <tfoot></tfoot>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
     <div class="table-tools">
       <div>
         <h2 style="margin:0"><span class="dot"></span>Histórico de valor por rota</h2>
@@ -593,6 +620,7 @@ function apply(){
   renderCarrierSpend(rows);
   renderClientSpend(rows);
   renderSavings(rows);
+  renderDiscounts(rows);
   buildTable(FREIGHTS);   // histórico por rota: sempre dados completos (não usa os filtros)
 }
 
@@ -734,6 +762,62 @@ function renderClientSpend(rows){
     options:baseOpts({indexAxis:"y",
       plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>fmtBRL0(c.parsed.x)}}},
       scales:{x:{grid:{color:GRID},ticks:{callback:v=>"R$ "+fmtN(v)}},y:{grid:{display:false}}}})});
+}
+
+/* ---- Descontos nos CTEs ---- */
+function renderDiscounts(rows){
+  const disc=rows.filter(r=>(r.vdesc||0)>0);
+  const n=disc.length, nTot=rows.length;
+  const totDesc=disc.reduce((s,r)=>s+(r.vdesc||0),0);
+  const totFat =disc.reduce((s,r)=>s+(r.vfat||0),0);
+  const totPago=disc.reduce((s,r)=>s+(r.valor||0),0);
+  const pctFrete = nTot? (n/nTot*100):0;
+  const pctDesc  = totFat? (totDesc/totFat*100):0;
+
+  const cards=[
+    {lab:"CTEs com desconto", val:fmtN(n), sub:`${pctFrete.toLocaleString("pt-BR",{maximumFractionDigits:1})}% dos fretes no filtro`},
+    {lab:"Valor sem desconto", val:fmtBRL0(totFat), sub:"o que pagaria sem desconto"},
+    {lab:"Total descontado", val:fmtBRL0(totDesc), sub:`${pctDesc.toLocaleString("pt-BR",{maximumFractionDigits:1})}% sobre o faturado`, alt:true},
+    {lab:"Valor pago (c/ desconto)", val:fmtBRL0(totPago), sub:"efetivamente pago nesses CTEs"}
+  ];
+  document.getElementById("disc-kpis").innerHTML = cards.map(c=>
+    `<div class="kpi${c.alt?' alt':''}"><div class="lab">${c.lab}</div>
+     <div class="val">${c.val}</div><div class="sub">${c.sub||""}</div></div>`).join("");
+
+  // agrega por cliente
+  const m={};
+  disc.forEach(r=>{ const k=r.client||"—";
+    const a=m[k]||(m[k]={cli:k,n:0,fat:0,desc:0,pago:0});
+    a.n++; a.fat+=r.vfat||0; a.desc+=r.vdesc||0; a.pago+=r.valor||0; });
+  const list=Object.values(m).sort((a,b)=>b.desc-a.desc);
+
+  // chart top 10
+  const top=list.slice(0,10);
+  destroy("disc");
+  charts.disc=new Chart(document.getElementById("ch-disc"),{type:"bar",
+    data:{labels:top.map(t=>t.cli),datasets:[{data:top.map(t=>t.desc),
+      backgroundColor:"rgba(233,162,59,.85)",borderRadius:5,maxBarThickness:20}]},
+    options:baseOpts({indexAxis:"y",
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>"Desconto: "+fmtBRL0(c.parsed.x)}}},
+      scales:{x:{grid:{color:GRID},ticks:{callback:v=>"R$ "+fmtN(v)}},y:{grid:{display:false},ticks:{font:{size:10}}}}})});
+
+  // tabela
+  const tb=document.querySelector("#disc-tbl tbody");
+  tb.innerHTML = list.map(r=>{
+    const pct=r.fat>0? (r.desc/r.fat*100):0;
+    return `<tr>
+      <td class="rota">${r.cli}</td>
+      <td>${fmtN(r.n)}</td>
+      <td>${fmtBRL0(r.fat)}</td>
+      <td style="color:var(--warn);font-weight:600">${fmtBRL0(r.desc)}</td>
+      <td>${fmtBRL0(r.pago)}</td>
+      <td>${pct.toLocaleString("pt-BR",{maximumFractionDigits:1})}%</td>
+    </tr>`;}).join("") ||
+    `<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:22px">Nenhum CTE com desconto nos filtros atuais.</td></tr>`;
+  document.querySelector("#disc-tbl tfoot").innerHTML = list.length?
+    `<tr><td>Total — ${list.length} clientes</td><td>${fmtN(n)}</td><td>${fmtBRL0(totFat)}</td>
+     <td style="color:var(--warn)">${fmtBRL0(totDesc)}</td><td>${fmtBRL0(totPago)}</td>
+     <td>${pctDesc.toLocaleString("pt-BR",{maximumFractionDigits:1})}%</td></tr>`:"";
 }
 
 /* ---- Tabela rota (histórico semanal) ---- */

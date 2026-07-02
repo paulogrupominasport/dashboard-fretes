@@ -38,7 +38,9 @@ GVIZ_CSV = (
 COL_AGEND   = "#Agend."
 COL_EMPRESA = "Empresa"               # transportadora
 COL_PESO    = "Peso CTE"              # toneladas (coluna F)
-COL_VFINAL  = "Valor Final Pagamento" # R$ (coluna L)
+COL_VFATUR  = "Valor Fatur."          # valor sem desconto (coluna J)
+COL_VDESC   = "Valor Desconto"        # desconto aplicado (coluna K)
+COL_VFINAL  = "Valor Final Pagamento" # R$ pago (coluna L)
 COL_DTEMIS  = "Data Emiss. CTe"       # coluna M
 COL_LOTE    = "Lote"                  # coluna S -> cliente
 COL_COLETA  = "Cidade Coleta"         # coluna AC
@@ -223,6 +225,8 @@ def build(rows, comp_rows=None):
             final_leg = next((r for r, e in zip(rs, entregas) if "ITAUNA" not in e), rs[0])
             origin_leg = next((r for r, c in zip(rs, coletas) if "ITAUNA" not in c), rs[0])
             valor = sum(to_float(r.get(COL_VFINAL)) for r in rs)   # soma os 2 CTEs
+            vfat = sum(to_float(r.get(COL_VFATUR)) for r in rs)
+            vdesc = sum(to_float(r.get(COL_VDESC)) for r in rs)
             peso = to_float(origin_leg.get(COL_PESO)) or to_float(final_leg.get(COL_PESO))
             disp, key = clean_carrier(final_leg.get(COL_EMPRESA))
             client = clean_client(final_leg.get(COL_LOTE))
@@ -230,7 +234,8 @@ def build(rows, comp_rows=None):
             destino = clean_city(final_leg.get(COL_ENTREGA))
             dts = [d for d in (to_date(r.get(COL_DTEMIS)) for r in rs) if d]
             data = max(dts) if dts else None
-            freights.append(_rec(ag, True, disp, key, client, origem, destino, peso, valor, data))
+            freights.append(_rec(ag, True, disp, key, client, origem, destino, peso, valor, data,
+                                 vfat, vdesc))
         else:
             for r in rs:
                 disp, key = clean_carrier(r.get(COL_EMPRESA))
@@ -239,8 +244,11 @@ def build(rows, comp_rows=None):
                 destino = clean_city(r.get(COL_ENTREGA))
                 peso = to_float(r.get(COL_PESO))
                 valor = to_float(r.get(COL_VFINAL))
+                vfat = to_float(r.get(COL_VFATUR))
+                vdesc = to_float(r.get(COL_VDESC))
                 data = to_date(r.get(COL_DTEMIS))
-                freights.append(_rec(ag, False, disp, key, client, origem, destino, peso, valor, data))
+                freights.append(_rec(ag, False, disp, key, client, origem, destino, peso, valor, data,
+                                     vfat, vdesc))
 
     # Nome de exibição canônico por transportadora (1 nome por chave de grupo)
     from collections import Counter
@@ -267,7 +275,8 @@ def build(rows, comp_rows=None):
     return {"meta": meta, "freights": freights, "competitors": competitors}
 
 
-def _rec(ag, twoleg, carrier, ckey, client, origem, destino, peso, valor, data):
+def _rec(ag, twoleg, carrier, ckey, client, origem, destino, peso, valor, data,
+         vfat=0.0, vdesc=0.0):
     origem_d = _title(origem)
     destino_d = _title(destino)
     rpt = round(valor / peso, 2) if peso > 0 else None
@@ -282,6 +291,8 @@ def _rec(ag, twoleg, carrier, ckey, client, origem, destino, peso, valor, data):
         "rota": f"{origem_d} → {destino_d}" if origem_d and destino_d else (origem_d or destino_d or "—"),
         "peso": round(peso, 3),
         "valor": round(valor, 2),
+        "vfat": round(vfat, 2),
+        "vdesc": round(vdesc, 2),
         "rpt": rpt,
         "data": data.isoformat() if data else None,
         "mes": data.strftime("%Y-%m") if data else None,

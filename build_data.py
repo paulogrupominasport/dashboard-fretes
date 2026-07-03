@@ -15,6 +15,7 @@ Sem dependências externas (usa apenas a biblioteca padrão).
 import csv
 import io
 import json
+import os
 import re
 import sys
 import urllib.request
@@ -175,7 +176,52 @@ def to_date(v):
 # ----------------------------------------------------------------------------
 # Leitura da planilha
 # ----------------------------------------------------------------------------
-def fetch_rows(tab=SHEET_TAB):
+# Se houver credenciais de conta de serviço no ambiente, lê a planilha de forma
+# AUTENTICADA (planilha pode ficar PRIVADA). Senão, usa o gviz público.
+#   - GOOGLE_SA_JSON            : conteúdo JSON da chave da conta de serviço, OU
+#   - GOOGLE_APPLICATION_CREDENTIALS : caminho para o arquivo JSON da chave
+SA_SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
+
+
+def _has_service_account():
+    return bool(os.environ.get("GOOGLE_SA_JSON") or
+                os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"))
+
+
+def _sheets_service():
+    from google.oauth2 import service_account          # lazy import
+    from googleapiclient.discovery import build as gbuild
+    raw = os.environ.get("GOOGLE_SA_JSON")
+    if raw:
+        info = json.loads(raw)
+        creds = service_account.Credentials.from_service_account_info(info, scopes=SA_SCOPES)
+    else:
+        path = os.environ["GOOGLE_APPLICATION_CREDENTIALS"]
+        creds = service_account.Credentials.from_service_account_file(path, scopes=SA_SCOPES)
+    return gbuild("sheets", "v4", credentials=creds, cache_discovery=False)
+
+
+def fetch_rows_api(tab):
+    """Leitura AUTENTICADA via Google Sheets API (planilha privada)."""
+    svc = _sheets_service()
+    res = (svc.spreadsheets().values()
+           .get(spreadsheetId=SHEET_ID, range=f"'{tab}'",
+                valueRenderOption="FORMATTED_VALUE",
+                dateTimeRenderOption="FORMATTED_STRING")
+           .execute())
+    values = res.get("values", [])
+    if not values:
+        raise RuntimeError(f"a aba '{tab}' veio vazia pela API.")
+    fields = [str(h or "").strip() for h in values[0]]
+    rows = []
+    for r in values[1:]:
+        r = list(r) + [""] * (len(fields) - len(r))     # completa células vazias no fim
+        rows.append({fields[i]: r[i] for i in range(len(fields))})
+    return rows, fields
+
+
+def fetch_rows_gviz(tab):
+    """Leitura PÚBLICA via endpoint gviz CSV (planilha compartilhada por link)."""
     url = GVIZ_CSV.format(id=SHEET_ID, tab=urllib.parse.quote(tab))
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
     with urllib.request.urlopen(req, timeout=60) as r:
@@ -194,6 +240,13 @@ def fetch_rows(tab=SHEET_TAB):
     for raw_row in reader:
         rows.append({(k or "").strip(): v for k, v in raw_row.items()})
     return rows, fields
+
+
+def fetch_rows(tab=SHEET_TAB):
+    """Escolhe automaticamente: API autenticada (privada) ou gviz (pública)."""
+    if _has_service_account():
+        return fetch_rows_api(tab)
+    return fetch_rows_gviz(tab)
 
 
 # ----------------------------------------------------------------------------

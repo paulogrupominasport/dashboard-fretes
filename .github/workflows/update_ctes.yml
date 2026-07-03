@@ -2,8 +2,9 @@ name: Atualizar dados CTEs
 
 on:
   schedule:
-    - cron: "*/7,37 * * * *"     # a cada 10 minutos (UTC)
-  workflow_dispatch:            # botão "Run workflow" / atualização sob demanda
+    # minutos "fora de pico" (o GitHub atrasa/pula execuções perto de :00 e :30)
+    - cron: "7,37 * * * *"
+  workflow_dispatch:            # botão "Run workflow" / disparo via API (Apps Script)
   push:
     branches: [ main ]
     paths:
@@ -21,13 +22,21 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
+      - name: Instalar dependências (leitura autenticada da planilha)
+        run: pip install --quiet google-api-python-client google-auth
+
       - name: Gerar dados_ctes.json
+        env:
+          # cole a chave JSON da conta de serviço em Settings > Secrets and variables
+          # > Actions > New repository secret, com o nome GOOGLE_SA_JSON.
+          # Se este secret estiver vazio, o script cai no modo público (gviz).
+          GOOGLE_SA_JSON: ${{ secrets.GOOGLE_SA_JSON }}
         run: python build_data.py
 
       - name: Commitar se houver mudança
